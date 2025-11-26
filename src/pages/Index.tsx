@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 
 type Character = {
   id: string;
@@ -29,26 +29,17 @@ type Message = {
   timestamp: Date;
 };
 
+const CHAT_API = 'https://functions.poehali.dev/362889ba-e8b2-4bbd-b965-f0bb81ee6722';
+const CHARACTERS_API = 'https://functions.poehali.dev/1836b764-9c4f-45e4-b65f-db76c9e6bfb1';
+
 const Index = () => {
+  const { toast } = useToast();
   const [view, setView] = useState<'home' | 'create' | 'chat'>('home');
-  const [characters, setCharacters] = useState<Character[]>([
-    {
-      id: '1',
-      name: 'Алиса',
-      avatar: '👩‍🦰',
-      age: '25',
-      gender: 'Женский',
-      appearance: 'Высокая, рыжие волосы, зеленые глаза',
-      personality: 'Открытая, игривая, без границ в общении',
-      background: 'Творческая личность, любит эксперименты',
-      communicationStyle: 'Прямая, раскованная, использует эмодзи',
-      interests: 'Искусство, музыка, откровенные разговоры',
-      nsfwPreferences: 'Открыта ко всему, любит флирт и провокации',
-    },
-  ]);
+  const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const [newCharacter, setNewCharacter] = useState<Character>({
     id: '',
@@ -64,27 +55,64 @@ const Index = () => {
     nsfwPreferences: '',
   });
 
-  const handleCreateCharacter = () => {
+  useEffect(() => {
+    loadCharacters();
+  }, []);
+
+  const loadCharacters = async () => {
+    try {
+      const response = await fetch(CHARACTERS_API);
+      const data = await response.json();
+      setCharacters(data);
+    } catch (error) {
+      console.error('Error loading characters:', error);
+    }
+  };
+
+  const handleCreateCharacter = async () => {
     if (newCharacter.name && newCharacter.personality) {
-      const character: Character = {
-        ...newCharacter,
-        id: Date.now().toString(),
-      };
-      setCharacters([...characters, character]);
-      setNewCharacter({
-        id: '',
-        name: '',
-        avatar: '😊',
-        age: '25',
-        gender: 'Любой',
-        appearance: '',
-        personality: '',
-        background: '',
-        communicationStyle: '',
-        interests: '',
-        nsfwPreferences: '',
-      });
-      setView('home');
+      try {
+        const character: Character = {
+          ...newCharacter,
+          id: Date.now().toString(),
+        };
+        
+        const response = await fetch(CHARACTERS_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(character),
+        });
+
+        if (response.ok) {
+          const savedCharacter = await response.json();
+          setCharacters([savedCharacter, ...characters]);
+          setNewCharacter({
+            id: '',
+            name: '',
+            avatar: '😊',
+            age: '25',
+            gender: 'Любой',
+            appearance: '',
+            personality: '',
+            background: '',
+            communicationStyle: '',
+            interests: '',
+            nsfwPreferences: '',
+          });
+          setView('home');
+          toast({
+            title: '✅ Персонаж создан',
+            description: `${savedCharacter.name} готов к общению`,
+          });
+        }
+      } catch (error) {
+        console.error('Error creating character:', error);
+        toast({
+          title: '❌ Ошибка',
+          description: 'Не удалось создать персонажа',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
@@ -101,8 +129,8 @@ const Index = () => {
     setView('chat');
   };
 
-  const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -113,24 +141,38 @@ const Index = () => {
 
     setMessages([...messages, userMessage]);
     setInputMessage('');
+    setIsLoading(true);
 
-    setTimeout(() => {
-      const responses = [
-        'Ммм, интересно... Продолжай 😏',
-        'О да, я тебя слушаю внимательно 💋',
-        'Расскажи мне больше, мне нравится 🔥',
-        'Ты знаешь, как меня завести словами...',
-        'Это так заводит! Что дальше? 😈',
-        'Обожаю, когда ты так говоришь...',
-      ];
+    try {
+      const response = await fetch(CHAT_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: inputMessage,
+          character: selectedCharacter,
+        }),
+      });
+
+      const data = await response.json();
+      
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: responses[Math.floor(Math.random() * responses.length)],
+        text: data.message,
         isUser: false,
         timestamp: new Date(),
       };
+      
       setMessages((prev) => [...prev, botMessage]);
-    }, 800);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        title: '❌ Ошибка',
+        description: 'Не удалось отправить сообщение',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const avatarEmojis = [
@@ -188,27 +230,38 @@ const Index = () => {
                   🔞 Контент без ограничений
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {characters.map((character) => (
-                  <div
-                    key={character.id}
-                    className="bg-card rounded-lg p-6 border border-border hover:border-primary transition-all cursor-pointer animate-fade-in hover:scale-105"
-                    onClick={() => handleStartChat(character)}
-                  >
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="text-5xl">{character.avatar}</div>
-                        <div className="flex-1">
-                          <h3 className="text-xl font-semibold">{character.name}</h3>
-                          <p className="text-xs text-muted-foreground">{character.age} лет • {character.gender}</p>
+              
+              {characters.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground mb-4">Персонажей пока нет</p>
+                  <Button onClick={() => setView('create')}>
+                    <Icon name="Plus" size={20} className="mr-2" />
+                    Создать первого персонажа
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {characters.map((character) => (
+                    <div
+                      key={character.id}
+                      className="bg-card rounded-lg p-6 border border-border hover:border-primary transition-all cursor-pointer animate-fade-in hover:scale-105"
+                      onClick={() => handleStartChat(character)}
+                    >
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="text-5xl">{character.avatar}</div>
+                          <div className="flex-1">
+                            <h3 className="text-xl font-semibold">{character.name}</h3>
+                            <p className="text-xs text-muted-foreground">{character.age} лет • {character.gender}</p>
+                          </div>
                         </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{character.personality}</p>
+                        <div className="text-xs text-primary">Нажми для чата 💬</div>
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">{character.personality}</p>
-                      <div className="text-xs text-primary">Нажми для чата 💬</div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -386,16 +439,30 @@ const Index = () => {
                       </AvatarFallback>
                     </Avatar>
                     <div
-                      className={`rounded-2xl p-4 max-w-md ${
+                      className={`rounded-2xl p-4 max-w-xl ${
                         message.isUser
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-secondary text-secondary-foreground'
                       }`}
                     >
-                      <p className="whitespace-pre-wrap">{message.text}</p>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>
                     </div>
                   </div>
                 ))}
+                {isLoading && (
+                  <div className="flex gap-3">
+                    <Avatar className="h-10 w-10 flex-shrink-0">
+                      <AvatarFallback className="text-xl">{selectedCharacter.avatar}</AvatarFallback>
+                    </Avatar>
+                    <div className="rounded-2xl p-4 bg-secondary">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
+                        <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                        <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
 
@@ -408,13 +475,19 @@ const Index = () => {
                     onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
                     placeholder="Напиши что угодно... без ограничений 🔥"
                     className="bg-background"
+                    disabled={isLoading}
                   />
-                  <Button onClick={handleSendMessage} size="icon" className="flex-shrink-0">
+                  <Button 
+                    onClick={handleSendMessage} 
+                    size="icon" 
+                    className="flex-shrink-0"
+                    disabled={isLoading}
+                  >
                     <Icon name="Send" size={20} />
                   </Button>
                 </div>
                 <p className="text-xs text-center text-muted-foreground mt-2">
-                  Все разговоры конфиденциальны • Нет модерации контента
+                  Все разговоры конфиденциальны • Нет модерации контента • Детальные ответы 500+ слов
                 </p>
               </div>
             </div>

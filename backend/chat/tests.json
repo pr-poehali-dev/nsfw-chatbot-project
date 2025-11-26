@@ -1,0 +1,23 @@
+{
+  "tests": [
+    {
+      "name": "Generate NSFW response",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "message": "Привет",
+        "character": {
+          "name": "Тест",
+          "personality": "Игривая",
+          "nsfwPreferences": "Без ограничений"
+        }
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "message": "string",
+        "wordCount": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
